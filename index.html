@@ -5577,7 +5577,7 @@ function renderCashBook() {
     partialPaymentInvoices.forEach(inv => {
         (inv.payments ||[]).forEach(p => {
             if (p.amount > 0) {
-                const d = new Date(p.date).toISOString().split('T')[0];
+                const d = new Date(p.date).toLocaleDateString('en-CA');
                 dailyNet[d] = (dailyNet[d] || 0) + p.amount;
             }
         });
