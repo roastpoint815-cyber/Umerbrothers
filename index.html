@@ -6734,31 +6734,26 @@ function syncLoggedInUserWithGlobalUsers() {
 
 
 async function handleLogin() {
-    const email = document.getElementById('username').value.trim(); // Username/Email field
-    const oldPassword = document.getElementById('password').value.trim(); // Current Password field
-    const newPassword = document.getElementById('change-password-input').value.trim(); // New Password field
+    const email = document.getElementById('username').value.trim();
+    const oldPassword = document.getElementById('password').value.trim();
+    const newPassword = document.getElementById('change-password-input').value.trim();
     
-    if (!email.includes("@")) {
-        alert("Meharbani karke sahi Email likhein (e.g. name@mail.com)");
-        return;
-    }
+    const loginBtn = document.getElementById('login-button');
 
-    if (!oldPassword) {
-        alert("Meharbani karke apna maujooda (Current) password likhein.");
+    if (!email || !oldPassword) {
+        alert("Email aur Purana Password likhna zaroori hai.");
         return;
     }
 
     try {
-        const loginBtn = document.getElementById('login-button');
         loginBtn.innerText = "Processing...";
         loginBtn.disabled = true;
 
-        // STEP 1: Pehle purane credentials se Firebase mein login koshish karein
-        // Agar password galat hoga to ye line error throw karegi aur catch block mein chali jayegi
+        // 1. Pehle purane credentials se login karein (Verification)
         const userCredential = await auth.signInWithEmailAndPassword(email, oldPassword);
         const user = userCredential.user;
 
-        // STEP 2: Agar login kamyab ho gaya aur "New Password" field bhari hui hai
+        // 2. Agar login kamyab ho gaya aur "New Password" wale box mein kuch likha hai
         if (newPassword !== "") {
             if (newPassword.length < 6) {
                 alert("Naya password kam az kam 6 characters ka hona chahiye.");
@@ -6767,22 +6762,24 @@ async function handleLogin() {
                 return;
             }
 
-            // Firebase Auth mein password update karein
+            // A: Firebase Auth (Main Login System) mein password update karein
             await user.updatePassword(newPassword);
-            
-            // Firestore Database mein bhi password update karein (Record ke liye)
+
+            // B: Firestore Database (Users Table) mein password record update karein
+            // Hum password ko wese hi save karenge jaise registration mein hota hai
             await db.collection('users').doc(user.uid).update({
-                password: newPassword // Note: Auth zyada secure hai, ye sirf reference ke liye hai
+                password: newPassword
             });
 
-            alert("Kamyabi: Aapka password tabdeel kar diya gaya hai!");
+            alert("Mubarak! Password Software aur Firebase dono mein tabdeel ho gaya hai.");
         }
 
-        // STEP 3: Database se user ka baqi data mangwaein
+        // 3. User ka baqi data mangwaein login process mukammal karne ke liye
         const userDoc = await db.collection('users').doc(user.uid).get();
         const userData = userDoc.data();
 
         if (userData) {
+            // Approval check
             if (userData.status !== 'Approved' && userData.role !== 'admin') {
                 alert("Aapka account PENDING hai. Admin ki approval ka intezar karein.");
                 auth.signOut();
@@ -6791,28 +6788,28 @@ async function handleLogin() {
                 return;
             }
 
+            // Session set karein
             loggedInUser = { id: user.uid, ...userData };
-            
-            // Login successful: UI Change karein
+            sessionStorage.setItem('active_user_session', JSON.stringify(loggedInUser));
+
+            // UI change karein
             document.getElementById('auth-container').style.display = 'none'; 
             document.getElementById('main-app').style.display = 'flex'; 
             
-            // Application initialize karein
+            // App ko load karein
             initializeApp(); 
         }
 
     } catch(e) {
-        // Agar purana password galat hoga to ye error dikhayega
-        console.error(e);
+        console.error("Login/Update Error:", e);
         if (e.code === 'auth/wrong-password') {
-            alert("Ghalti: Aapka purana password sahi nahi hai. Password tabdeel nahi ho saka.");
+            alert("Ghalti: Aapka 'Current Password' sahi nahi hai. Password change nahi ho saka.");
         } else if (e.code === 'auth/user-not-found') {
-            alert("Ghalti: Is email se koi user maujood nahi hai.");
+            alert("Ghalti: Is email par koi account nahi mila.");
         } else {
-            alert("Error: " + e.message);
+            alert("System Error: " + e.message);
         }
     } finally {
-        const loginBtn = document.getElementById('login-button');
         loginBtn.innerText = "Login / Change Password";
         loginBtn.disabled = false;
     }
