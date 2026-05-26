@@ -5577,7 +5577,7 @@ function renderCashBook() {
     partialPaymentInvoices.forEach(inv => {
         (inv.payments ||[]).forEach(p => {
             if (p.amount > 0) {
-                const d = new Date(p.date).toLocaleDateString('en-CA');
+               const d = new Date(p.date).toLocaleDateString('en-CA');
                 dailyNet[d] = (dailyNet[d] || 0) + p.amount;
             }
         });
@@ -6734,40 +6734,88 @@ function syncLoggedInUserWithGlobalUsers() {
 
 
 async function handleLogin() {
-    const email = document.getElementById('username').value.trim(); // Yahan Email likhein
-    const password = document.getElementById('password').value.trim();
+    const email = document.getElementById('username').value.trim(); // Username/Email field
+    const oldPassword = document.getElementById('password').value.trim(); // Current Password field
+    const newPassword = document.getElementById('change-password-input').value.trim(); // New Password field
     
     if (!email.includes("@")) {
         alert("Meharbani karke sahi Email likhein (e.g. name@mail.com)");
         return;
     }
 
+    if (!oldPassword) {
+        alert("Meharbani karke apna maujooda (Current) password likhein.");
+        return;
+    }
+
     try {
-        document.getElementById('login-button').innerText = "Checking...";
-        const userCredential = await auth.signInWithEmailAndPassword(email, password);
+        const loginBtn = document.getElementById('login-button');
+        loginBtn.innerText = "Processing...";
+        loginBtn.disabled = true;
+
+        // STEP 1: Pehle purane credentials se Firebase mein login koshish karein
+        // Agar password galat hoga to ye line error throw karegi aur catch block mein chali jayegi
+        const userCredential = await auth.signInWithEmailAndPassword(email, oldPassword);
         const user = userCredential.user;
-        
+
+        // STEP 2: Agar login kamyab ho gaya aur "New Password" field bhari hui hai
+        if (newPassword !== "") {
+            if (newPassword.length < 6) {
+                alert("Naya password kam az kam 6 characters ka hona chahiye.");
+                loginBtn.innerText = "Login / Change Password";
+                loginBtn.disabled = false;
+                return;
+            }
+
+            // Firebase Auth mein password update karein
+            await user.updatePassword(newPassword);
+            
+            // Firestore Database mein bhi password update karein (Record ke liye)
+            await db.collection('users').doc(user.uid).update({
+                password: newPassword // Note: Auth zyada secure hai, ye sirf reference ke liye hai
+            });
+
+            alert("Kamyabi: Aapka password tabdeel kar diya gaya hai!");
+        }
+
+        // STEP 3: Database se user ka baqi data mangwaein
         const userDoc = await db.collection('users').doc(user.uid).get();
         const userData = userDoc.data();
 
         if (userData) {
-            // APPROVAL CHECK: Admin ke ilawa koi 'Pending' banda login nahi kar sakta
             if (userData.status !== 'Approved' && userData.role !== 'admin') {
                 alert("Aapka account PENDING hai. Admin ki approval ka intezar karein.");
                 auth.signOut();
+                loginBtn.innerText = "Login / Change Password";
+                loginBtn.disabled = false;
                 return;
             }
 
             loggedInUser = { id: user.uid, ...userData };
+            
+            // Login successful: UI Change karein
             document.getElementById('auth-container').style.display = 'none'; 
             document.getElementById('main-app').style.display = 'flex'; 
+            
+            // Application initialize karein
             initializeApp(); 
-            document.getElementById('partial-payment-method').addEventListener('change', (e) => handlePaymentMethodChange(e.target, document.getElementById('partial-payment-details-container')));
         }
+
     } catch(e) {
-        alert("Login Failed: " + e.message);
+        // Agar purana password galat hoga to ye error dikhayega
+        console.error(e);
+        if (e.code === 'auth/wrong-password') {
+            alert("Ghalti: Aapka purana password sahi nahi hai. Password tabdeel nahi ho saka.");
+        } else if (e.code === 'auth/user-not-found') {
+            alert("Ghalti: Is email se koi user maujood nahi hai.");
+        } else {
+            alert("Error: " + e.message);
+        }
+    } finally {
+        const loginBtn = document.getElementById('login-button');
+        loginBtn.innerText = "Login / Change Password";
+        loginBtn.disabled = false;
     }
-    document.getElementById('login-button').innerText = "Login / Change Password";
 }
 
 function checkActiveSession() {
